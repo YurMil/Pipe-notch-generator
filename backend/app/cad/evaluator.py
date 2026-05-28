@@ -4,6 +4,7 @@ import math
 
 from ..models.request_models import StepExportRequestModel
 from ..models.response_models import StepExportException
+from .builders.cylinders import resolve_single_ended_stock_start
 from .builders.frames import create_frame, scale_vec3, add_vec3, vec3
 from .dto import (
     AxialRange,
@@ -123,6 +124,23 @@ def evaluate_step_export(request: StepExportRequestModel) -> EvaluatedAssemblyDe
     )
     receiver_surface = "main-inner" if request.project.connection.type == "set_in" else "main-outer"
     branch_contour_radius = (branch_od / 2.0) if request.project.connection.useOuterBranchContour else (branch_id / 2.0)
+    opening_tool_radius = max(branch_contour_radius, 0.1)
+
+    opening_start = resolve_single_ended_stock_start(
+        receiver_radius=main_od / 2.0,
+        branch_radius=opening_tool_radius,
+        offset=request.project.connection.offset,
+        axis_angle_rad=axis_angle_rad,
+        axial_shift=resolved_penetration,
+        error_part_name=MAIN_PART_NAME,
+    )
+
+    if not (branch_range.end > opening_start + 1.0):
+        raise StepExportException(
+            "invalid_dimensions",
+            "Geometry Error: Opening tool range is too short after receiver trim.",
+            details={"part": MAIN_PART_NAME},
+        )
 
     main = EvaluatedPipeBody(
         name=MAIN_PART_NAME,
@@ -145,9 +163,9 @@ def evaluate_step_export(request: StepExportRequestModel) -> EvaluatedAssemblyDe
             ),
         ],
         opening_subtract=EvaluatedOpeningSubtract(
-            radius=max(branch_contour_radius, 0.1),
+            radius=opening_tool_radius,
             frame=opening_frame,
-            axial_range=AxialRange(start=-main_od, end=main_od * 2.0),
+            axial_range=AxialRange(start=opening_start, end=branch_range.end),
         ),
     )
 

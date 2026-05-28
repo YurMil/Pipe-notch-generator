@@ -44,6 +44,45 @@ class StepEvaluatorTests(unittest.TestCase):
         self.assertEqual(definition.branch.name, "BranchPipe")
         self.assertEqual(definition.filename, "pipe_notch_set_on_50x2_on_100x3_45deg_assembly.step")
 
+    def test_main_opening_tool_does_not_pierce_back_wall(self) -> None:
+        request = StepExportRequestModel.model_validate(
+            {
+                "version": 1,
+                "project": {
+                    "main": {"od": 100, "wall": 3},
+                    "branch": {"od": 50, "wall": 2},
+                    "connection": {
+                        "type": "set_on",
+                        "axisAngleDeg": 90,
+                        "offset": 0,
+                        "weldingGap": 0,
+                        "seamAngleDeg": 0,
+                        "penetrationMode": "by_rule",
+                        "penetrationDepth": 3,
+                        "useOuterBranchContour": True,
+                    },
+                },
+                "exportOptions": {
+                    "mode": "assembly",
+                    "units": "mm",
+                    "includeMain": True,
+                    "includeBranch": True,
+                    "includeFusedBody": False,
+                },
+            }
+        )
+
+        definition = evaluate_step_export(request)
+
+        opening = definition.main.opening_subtract
+        self.assertIsNotNone(opening)
+        # The opening tool must not extend through the far (back) wall of the
+        # main pipe — its axial start, measured along the branch axis from the
+        # opening frame origin, has to stay above -main_outer_radius.
+        main_outer_radius = 100 / 2.0
+        self.assertGreater(opening.axial_range.start, -main_outer_radius + 1.0)
+        self.assertGreater(opening.axial_range.end, opening.axial_range.start + 1.0)
+
     def test_exports_equal_diameter_perpendicular_set_on_step(self) -> None:
         request = StepExportRequestModel.model_validate(
             {

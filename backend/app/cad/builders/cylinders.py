@@ -54,22 +54,30 @@ def build_hollow_cylinder(frame: Frame3D, axial_range: AxialRange, outer_radius:
     return subtract_shape(outer, inner, part_name="PipeBody", label="inner bore")
 
 
-def resolve_single_ended_stock_start(notch, *, axis_angle_rad: float, branch_radius: float, segments: int = 256) -> float:
+def resolve_single_ended_stock_start(
+    *,
+    receiver_radius: float,
+    branch_radius: float,
+    offset: float,
+    axis_angle_rad: float,
+    axial_shift: float,
+    segments: int = 256,
+    error_part_name: str = "BranchPipe",
+) -> float:
     s_theta = safe_small(math.sin(axis_angle_rad))
     t_theta = safe_small(math.tan(axis_angle_rad))
     max_lower_root = -math.inf
     min_upper_root = math.inf
-    axial_shift = notch.penetration_depth - notch.welding_gap
 
     for index in range(segments + 1):
         alpha = (index / segments) * math.pi * 2.0
-        term = (notch.receiver_radius ** 2) - (((branch_radius * math.sin(alpha)) + notch.offset) ** 2)
+        term = (receiver_radius ** 2) - (((branch_radius * math.sin(alpha)) + offset) ** 2)
 
         if term < -0.1:
             raise StepExportException(
                 "invalid_intersection",
                 "Geometry Error: Pipes do not intersect.",
-                details={"part": "BranchPipe"},
+                details={"part": error_part_name},
             )
 
         term = max(term, 0.0)
@@ -87,7 +95,7 @@ def resolve_single_ended_stock_start(notch, *, axis_angle_rad: float, branch_rad
         raise StepExportException(
             "invalid_intersection",
             "Geometry Error: Could not isolate a single receiver-trim interval.",
-            details={"part": "BranchPipe"},
+            details={"part": error_part_name},
         )
 
     return max_lower_root + (max(0.0, min_upper_root - max_lower_root) * 0.5)
@@ -193,9 +201,12 @@ def build_branch_pipe_body(body: EvaluatedPipeBody, *, axis_angle_rad: float):
         return build_branch_pipe_body_from_profile_lofts(body, axis_angle_rad=axis_angle_rad)
 
     stock_start = resolve_single_ended_stock_start(
-        notch,
-        axis_angle_rad=axis_angle_rad,
+        receiver_radius=notch.receiver_radius,
         branch_radius=notch.branch_outer_radius,
+        offset=notch.offset,
+        axis_angle_rad=axis_angle_rad,
+        axial_shift=notch.penetration_depth - notch.welding_gap,
+        error_part_name=body.name,
     )
     stock_range = AxialRange(start=stock_start, end=notch.far_end_axial)
 
