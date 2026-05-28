@@ -145,7 +145,7 @@ def evaluate_step_export(request: StepExportRequestModel) -> EvaluatedAssemblyDe
             ),
         ],
         opening_subtract=EvaluatedOpeningSubtract(
-            radius=max(branch_contour_radius + request.project.connection.weldingGap, 0.1),
+            radius=max(branch_contour_radius, 0.1),
             frame=opening_frame,
             axial_range=AxialRange(start=-main_od, end=main_od * 2.0),
         ),

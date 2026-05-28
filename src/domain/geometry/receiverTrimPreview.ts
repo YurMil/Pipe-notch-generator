@@ -155,7 +155,7 @@ function calculateCutDepth(config: ReceiverTrimConfig, alpha: number) {
 
     return ((1 / config.sT) * Math.sqrt(term))
         + ((config.branchMeshRadius * cosAlpha) / config.tT)
-        - config.receiverTrim.weldingGap
+        + config.receiverTrim.weldingGap
         - config.receiverTrim.penetrationDepth;
 }
 

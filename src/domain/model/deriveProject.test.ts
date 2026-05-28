@@ -34,7 +34,7 @@ describe('deriveProject', () => {
         expect(derived.validation.errors.some((message) => message.code === 'main-id')).toBe(true);
     });
 
-    it('flags solid runtime geometry that breaks the main opening tool', () => {
+    it('keeps main opening geometry stable when welding gap changes', () => {
         const derived = deriveProject({
             ...DEFAULT_PROJECT,
             connection: {
@@ -42,9 +42,28 @@ describe('deriveProject', () => {
                 weldingGap: 30,
             },
         });
+        const openingTool = findPrimitiveById(derived.solids, derived.solids.outputs.openingToolId);
 
-        expect(derived.validation.isValid).toBe(false);
-        expect(derived.validation.errors.some((message) => message.code === 'solid-main-hole')).toBe(true);
+        expect(derived.validation.isValid).toBe(true);
+        expect(openingTool?.kind === 'solid-cylinder' ? openingTool.radius : null).toBe(50 / 2);
+    });
+
+    it('accepts equal-diameter set-on geometry with welding gap', () => {
+        const derived = deriveProject({
+            ...DEFAULT_PROJECT,
+            branch: {
+                od: 100,
+                wall: 3,
+            },
+            connection: {
+                ...DEFAULT_PROJECT.connection,
+                axisAngleDeg: 90,
+                weldingGap: 50,
+                useOuterBranchContour: true,
+            },
+        });
+
+        expect(derived.validation.isValid).toBe(true);
     });
 
     it('builds a solid graph with hollow cylinders and boolean intents', () => {

@@ -134,7 +134,7 @@ function openingToolRange(main: DerivedPipeSpec): AxialRange {
 
 function openingToolRadius(branch: DerivedPipeSpec, connection: DerivedConnection): number {
     const referenceRadius = connection.useOuterBranchContour ? branch.outerRadius : branch.innerRadius;
-    return Math.max(referenceRadius + connection.weldingGap, 0.1);
+    return Math.max(referenceRadius, 0.1);
 }
 
 function receiverSurfaceForConnection(connection: DerivedConnection): 'main-outer' | 'main-inner' {
