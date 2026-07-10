@@ -9,8 +9,15 @@ import replicadWasmUrl from 'replicad-opencascadejs/src/replicad_single.wasm?url
 type ReplicadModule = typeof import('replicad');
 
 interface LocalStepExportRuntime {
+    assembleWire: ReplicadModule['assembleWire'];
     exportSTEP: ReplicadModule['exportSTEP'];
+    loft: ReplicadModule['loft'];
+    makeBSplineApproximation: ReplicadModule['makeBSplineApproximation'];
+    makeCircle: ReplicadModule['makeCircle'];
     makeCylinder: ReplicadModule['makeCylinder'];
+    makeFace: ReplicadModule['makeFace'];
+    makeSolid: ReplicadModule['makeSolid'];
+    weldShellsAndFaces: ReplicadModule['weldShellsAndFaces'];
 }
 
 let runtimePromise: Promise<LocalStepExportRuntime> | null = null;
@@ -60,6 +67,25 @@ function pointAlongAxis(frame: Frame3D, distance: number): Vec3 {
     return addVec3(frame.origin, scaleVec3(frame.axis, distance));
 }
 
+function frameTangent(frame: Frame3D): Vec3 {
+    return scaleVec3(frame.binormal, -1);
+}
+
+function samplePointOnFrame(
+    frame: Frame3D,
+    axialOffset: number,
+    normalOffset: number = 0,
+    tangentOffset: number = 0,
+): Vec3 {
+    return addVec3(
+        addVec3(
+            addVec3(frame.origin, scaleVec3(frame.axis, axialOffset)),
+            scaleVec3(frame.normal, normalOffset),
+        ),
+        scaleVec3(frameTangent(frame), tangentOffset),
+    );
+}
+
 function toPoint(value: Vec3): [number, number, number] {
     return [value.x, value.y, value.z];
 }
@@ -85,7 +111,7 @@ function openingToolRadius(derivedProject: DerivedProject) {
         ? derivedProject.branch.outerRadius
         : derivedProject.branch.innerRadius;
 
-    return Math.max(contourRadius + derivedProject.connection.weldingGap, 0.1);
+    return Math.max(contourRadius, 0.1);
 }
 
 function createMainFrame() {
@@ -112,7 +138,7 @@ function trimContourRadius(derivedProject: DerivedProject) {
 }
 
 function branchNotchShift(derivedProject: DerivedProject) {
-    return derivedProject.connection.weldingGap + derivedProject.connection.resolvedPenetrationDepth;
+    return derivedProject.connection.resolvedPenetrationDepth - derivedProject.connection.weldingGap;
 }
 
 function mainOpeningShift(derivedProject: DerivedProject) {
@@ -132,6 +158,27 @@ function validateIntersection(derivedProject: DerivedProject, segments: number =
             throw new Error('Geometry Error: Pipes do not intersect.');
         }
     }
+}
+
+function calculateReceiverNotchDepth(
+    derivedProject: DerivedProject,
+    alpha: number,
+    branchMeshRadius: number,
+) {
+    const sinAlpha = Math.sin(alpha);
+    const cosAlpha = Math.cos(alpha);
+    let term = (receiverRadius(derivedProject) ** 2)
+        - (((trimContourRadius(derivedProject) * sinAlpha) + derivedProject.connection.offset) ** 2);
+
+    term = Math.max(term, 0);
+
+    const sTheta = safeSmall(Math.sin(derivedProject.connection.axisAngleRad));
+    const tTheta = safeSmall(Math.tan(derivedProject.connection.axisAngleRad));
+
+    return (Math.sqrt(term) / sTheta)
+        + ((branchMeshRadius * cosAlpha) / tTheta)
+        + derivedProject.connection.weldingGap
+        - derivedProject.connection.resolvedPenetrationDepth;
 }
 
 function resolveSingleEndedStockStart(
@@ -168,12 +215,12 @@ function resolveSingleEndedStockStart(
     if (
         !Number.isFinite(maxLowerRoot)
         || !Number.isFinite(minUpperRoot)
-        || minUpperRoot <= maxLowerRoot + 1e-6
+        || minUpperRoot < maxLowerRoot - 1e-6
     ) {
         throw new Error('Geometry Error: Could not isolate a single receiver-trim interval.');
     }
 
-    return maxLowerRoot + ((minUpperRoot - maxLowerRoot) * 0.5);
+    return maxLowerRoot + (Math.max(0, minUpperRoot - maxLowerRoot) * 0.5);
 }
 
 function receiverCutterLength(derivedProject: DerivedProject) {
@@ -276,8 +323,15 @@ async function ensureRuntime(): Promise<LocalStepExportRuntime> {
             replicad.setOC(oc);
 
             return {
+                assembleWire: replicad.assembleWire,
                 exportSTEP: replicad.exportSTEP,
+                loft: replicad.loft,
+                makeBSplineApproximation: replicad.makeBSplineApproximation,
+                makeCircle: replicad.makeCircle,
                 makeCylinder: replicad.makeCylinder,
+                makeFace: replicad.makeFace,
+                makeSolid: replicad.makeSolid,
+                weldShellsAndFaces: replicad.weldShellsAndFaces,
             };
         })().catch((error) => {
             runtimePromise = null;
@@ -326,7 +380,65 @@ function buildMainPipe(runtime: LocalStepExportRuntime, derivedProject: DerivedP
     return shell.cut(openingTool);
 }
 
-function buildBranchPipe(runtime: LocalStepExportRuntime, derivedProject: DerivedProject) {
+function buildNotchWire(
+    runtime: LocalStepExportRuntime,
+    derivedProject: DerivedProject,
+    branchFrame: Frame3D,
+    branchMeshRadius: number,
+    segments: number = 192,
+) {
+    const points: Array<[number, number, number]> = [];
+
+    for (let index = 0; index <= segments; index += 1) {
+        const alpha = (index / segments) * Math.PI * 2;
+        const axial = calculateReceiverNotchDepth(derivedProject, alpha, branchMeshRadius);
+        points.push(toPoint(samplePointOnFrame(
+            branchFrame,
+            axial,
+            branchMeshRadius * Math.sin(alpha),
+            branchMeshRadius * Math.cos(alpha),
+        )));
+    }
+
+    return runtime.assembleWire([
+        runtime.makeBSplineApproximation(points, { tolerance: 1e-3, degMin: 1, degMax: 5 }),
+    ]);
+}
+
+function buildCircleWire(
+    runtime: LocalStepExportRuntime,
+    frame: Frame3D,
+    radius: number,
+    axial: number,
+) {
+    return runtime.assembleWire([
+        runtime.makeCircle(radius, toPoint(pointAlongAxis(frame, axial)), toPoint(frame.axis)),
+    ]);
+}
+
+function buildBranchPipeFromProfileLofts(runtime: LocalStepExportRuntime, derivedProject: DerivedProject) {
+    validateIntersection(derivedProject, 192);
+
+    const branchFrame = createBranchFrame(derivedProject);
+    const branchRange = branchAxialRange(derivedProject);
+    const outerNotch = buildNotchWire(runtime, derivedProject, branchFrame, derivedProject.branch.outerRadius);
+    const innerNotch = buildNotchWire(runtime, derivedProject, branchFrame, derivedProject.branch.innerRadius);
+    const farOuter = buildCircleWire(runtime, branchFrame, derivedProject.branch.outerRadius, branchRange.end);
+    const farInner = buildCircleWire(runtime, branchFrame, derivedProject.branch.innerRadius, branchRange.end);
+    const outerSide = runtime.loft([outerNotch, farOuter], { ruled: true }, true);
+    const innerSide = runtime.loft([innerNotch, farInner], { ruled: true }, true);
+    const notchRim = runtime.loft([outerNotch, innerNotch], { ruled: true }, true);
+    const farRing = runtime.makeFace(farOuter, [farInner]);
+
+    return runtime.makeSolid([
+        runtime.weldShellsAndFaces(outerSide.faces, true),
+        runtime.weldShellsAndFaces(innerSide.faces, true),
+        runtime.weldShellsAndFaces(notchRim.faces, true),
+        farRing,
+    ]);
+}
+
+function buildBranchPipeWithReceiverBoolean(runtime: LocalStepExportRuntime, derivedProject: DerivedProject) {
     validateIntersection(derivedProject, 128);
 
     const mainFrame = createMainFrame();
@@ -367,6 +479,14 @@ function buildBranchPipe(runtime: LocalStepExportRuntime, derivedProject: Derive
     }
 
     return shell.cut(receiverCutter);
+}
+
+function buildBranchPipe(runtime: LocalStepExportRuntime, derivedProject: DerivedProject) {
+    if (!derivedProject.connection.useOuterBranchContour) {
+        return buildBranchPipeFromProfileLofts(runtime, derivedProject);
+    }
+
+    return buildBranchPipeWithReceiverBoolean(runtime, derivedProject);
 }
 
 export function deriveStepProject(request: StepExportRequest) {

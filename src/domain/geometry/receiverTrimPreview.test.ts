@@ -85,6 +85,41 @@ describe('receiver trim preview', () => {
         expect(totalDelta).toBeGreaterThan(0.1);
     });
 
+    it('moves the branch cut away from the receiver when welding gap increases', () => {
+        const zeroGap = deriveProject({
+            ...DEFAULT_PROJECT,
+            branch: {
+                od: 100,
+                wall: 3,
+            },
+            connection: {
+                ...DEFAULT_PROJECT.connection,
+                axisAngleDeg: 90,
+                weldingGap: 0,
+                useOuterBranchContour: true,
+            },
+        });
+        const gapped = deriveProject({
+            ...zeroGap.input,
+            connection: {
+                ...zeroGap.input.connection,
+                weldingGap: 10,
+            },
+        });
+
+        const zeroGapPreview = evaluateReceiverTrimPreview(zeroGap.solids, 64);
+        const gappedPreview = evaluateReceiverTrimPreview(gapped.solids, 64);
+
+        expect(zeroGapPreview.isValid).toBe(true);
+        expect(gappedPreview.isValid).toBe(true);
+
+        const zeroGapMin = Math.min(...zeroGapPreview.cutCurve.map((point) => point.z));
+        const gappedMin = Math.min(...gappedPreview.cutCurve.map((point) => point.z));
+
+        expect(gappedMin).toBeGreaterThan(zeroGapMin);
+        expect(gappedMin - zeroGapMin).toBeCloseTo(10, 6);
+    });
+
     it('fails when the receiver trim no longer intersects the branch contour', () => {
         const derived = deriveProject({
             ...DEFAULT_PROJECT,

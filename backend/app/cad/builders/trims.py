@@ -49,7 +49,7 @@ def calculate_receiver_notch_depth_with_angle(
     return (
         (1.0 / s_theta) * math.sqrt(term)
         + ((branch_mesh_radius * cos_alpha) / t_theta)
-        - trim.welding_gap
+        + trim.welding_gap
         - trim.penetration_depth
     )
 
