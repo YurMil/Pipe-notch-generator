@@ -8,7 +8,26 @@ export class DxfWriter {
     }
 
     private addHeader() {
-        this.parts.push("0\nSECTION\n2\nENTITIES\n");
+        // Proper DXF R12 preamble: strict viewers (eDrawings, AutoCAD) reject
+        // entities-only files, and the CenterLines layer plus its CONTINUOUS
+        // linetype must be declared before use. $MEASUREMENT = 1 marks the
+        // drawing as metric.
+        this.parts.push(
+            "0\nSECTION\n2\nHEADER\n" +
+            "9\n$ACADVER\n1\nAC1009\n" +
+            "9\n$MEASUREMENT\n70\n1\n" +
+            "0\nENDSEC\n" +
+            "0\nSECTION\n2\nTABLES\n" +
+            "0\nTABLE\n2\nLTYPE\n70\n1\n" +
+            "0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n" +
+            "0\nENDTAB\n" +
+            "0\nTABLE\n2\nLAYER\n70\n2\n" +
+            "0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS\n" +
+            "0\nLAYER\n2\nCenterLines\n70\n0\n62\n1\n6\nCONTINUOUS\n" +
+            "0\nENDTAB\n" +
+            "0\nENDSEC\n" +
+            "0\nSECTION\n2\nENTITIES\n"
+        );
     }
 
 
