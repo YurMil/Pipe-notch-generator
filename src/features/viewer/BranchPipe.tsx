@@ -4,6 +4,7 @@ import { findPrimitiveById } from '../../domain/geometry/solids';
 import { evaluateReceiverTrimPreview } from '../../domain/geometry/receiverTrimPreview';
 import { useDerivedProject } from '../../hooks/useDerivedProject';
 import { createFrameTransform } from './solidPreview';
+import { useDisposeOnChange } from '../../hooks/useDisposeOnChange';
 
 export const BranchPipe: React.FC = () => {
     const derivedProject = useDerivedProject();
@@ -39,6 +40,10 @@ export const BranchPipe: React.FC = () => {
 
         return { geometry: geo, isValid: true };
     }, [branchFrame, derivedProject.solids]);
+
+    // The geometry is rebuilt on every parameter change and passed to <mesh>
+    // by prop, so R3F never disposes it — release it explicitly.
+    useDisposeOnChange(geometry);
 
     // Conditional rendering of mesh
     const meshComponent = useMemo(() => {

@@ -4,6 +4,7 @@ import { findPrimitiveById } from '../../domain/geometry/solids';
 import { evaluateReceiverTrimPreview } from '../../domain/geometry/receiverTrimPreview';
 import { useDerivedProject } from '../../hooks/useDerivedProject';
 import { createFrameTransform } from './solidPreview';
+import { useDisposeObject3DOnChange } from '../../hooks/useDisposeOnChange';
 
 export const SeamLine: React.FC = () => {
     const derivedProject = useDerivedProject();
@@ -30,6 +31,10 @@ export const SeamLine: React.FC = () => {
         const mat = new THREE.LineBasicMaterial({ color: '#ff3333', linewidth: 3 });
         return new THREE.Line(geo, mat);
     }, [isValid, points]);
+
+    // <primitive> hands ownership to us: R3F disposes neither the line's
+    // geometry nor its material, and both are rebuilt on every edit.
+    useDisposeObject3DOnChange(lineObj);
 
     if (!lineObj || !transform) return null;
 
