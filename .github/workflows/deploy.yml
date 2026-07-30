@@ -25,15 +25,23 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      # 4. Устанавливаем зависимости и собираем
-      - name: Install and Build
+      # 4. Устанавливаем зависимости
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 5. Прогоняем юнит-тесты ДО сборки — упавший тест обязан
+      #    остановить деплой, чтобы регрессия не уехала на сайт
+      - name: Run unit tests
+        run: pnpm test
+
+      # 6. Собираем
+      - name: Build
         run: |
-          pnpm install --frozen-lockfile
           pnpm build
           mv dist/index.html dist/app.html
         # Теперь у нас есть папка dist с готовой игрой
 
-      # 5. Отправляем папку dist в репозиторий сайта
+      # 7. Отправляем папку dist в репозиторий сайта
       - name: Push to Website Repository
         uses: cpina/github-action-push-to-another-repository@main
         env:
