@@ -26,9 +26,14 @@ jobs:
           cache: 'pnpm'
 
       # 4. Устанавливаем зависимости и собираем
-      - name: Install and Build
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Tests
+        run: pnpm test
+
+      - name: Build Static App
         run: |
-          pnpm install --frozen-lockfile
           pnpm build
           mv dist/index.html dist/app.html
         # Теперь у нас есть папка dist с готовой игрой
